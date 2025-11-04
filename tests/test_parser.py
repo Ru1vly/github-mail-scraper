@@ -1,73 +1,63 @@
 """Tests for the parser module"""
 import pytest
-from scraper.parser import parse_patch
+from scraper.parser import parse_patch, is_noreply_email
 
 
-# Sample unified diff
-SAMPLE_PATCH = """diff --git a/example.py b/example.py
-index 1234567..abcdefg 100644
---- a/example.py
-+++ b/example.py
-@@ -1,5 +1,6 @@
- def hello():
--    print("Hello")
-+    print("Hello, world!")
-+    return True
- 
- def main():
-     hello()
+# Sample patch content (from Example-.patch-content)
+SAMPLE_PATCH = """From 3169e1e48579c78cc9b7da796f04d8027effc6bf Mon Sep 17 00:00:00 2001
+From: ru1vly <ru1vly@protonmail.com>
+Date: Mon, 3 Nov 2025 19:04:23 +0300
+Subject: [PATCH] Workflow Orchestration Service is complete
+
+---
+ TODO.md                                       |  8 +-
 """
 
 
 def test_parse_patch_basic():
-    """Test parsing a simple patch."""
+    """Test parsing a simple patch for email and username."""
     result = parse_patch(SAMPLE_PATCH)
     
-    assert "files" in result
-    assert "added" in result
-    assert "removed" in result
+    assert "email" in result
+    assert "username" in result
     
-    assert len(result["files"]) == 1
-    assert result["added"] == 2
-    assert result["removed"] == 1
-    
-    file_data = result["files"][0]
-    assert file_data["path"] == "example.py"
-    assert file_data["is_added_file"] is False
-    assert file_data["is_removed_file"] is False
-    assert len(file_data["hunks"]) == 1
-    
-    hunk = file_data["hunks"][0]
-    assert hunk["source_start"] == 1
-    assert hunk["target_start"] == 1
-    assert hunk["added"] == 2
-    assert hunk["removed"] == 1
+    assert result["email"] == "ru1vly@protonmail.com"
+    assert result["username"] == "ru1vly"
 
 
-def test_parse_patch_empty():
-    """Test parsing an empty patch."""
-    result = parse_patch("")
-    
-    assert result["files"] == []
-    assert result["added"] == 0
-    assert result["removed"] == 0
-
-
-def test_parse_patch_new_file():
-    """Test parsing a patch for a new file."""
-    new_file_patch = """diff --git a/newfile.txt b/newfile.txt
-new file mode 100644
-index 0000000..1234567
---- /dev/null
-+++ b/newfile.txt
-@@ -0,0 +1,3 @@
-+Line 1
-+Line 2
-+Line 3
+def test_parse_patch_with_full_name():
+    """Test parsing when username includes full name."""
+    patch = """From abc123 Mon Sep 17 00:00:00 2001
+From: John Doe <john.doe@example.com>
+Date: Mon, 3 Nov 2025 19:04:23 +0300
 """
-    result = parse_patch(new_file_patch)
+    result = parse_patch(patch)
     
-    assert len(result["files"]) == 1
-    assert result["files"][0]["is_added_file"] is True
-    assert result["added"] == 3
-    assert result["removed"] == 0
+    assert result["email"] == "john.doe@example.com"
+    assert result["username"] == "John Doe"
+
+
+def test_parse_patch_invalid_format():
+    """Test parsing with invalid line 2 format."""
+    patch = """From abc123
+Invalid line format
+Date: Mon, 3 Nov 2025
+"""
+    with pytest.raises(ValueError, match="doesn't match expected format"):
+        parse_patch(patch)
+
+
+def test_parse_patch_too_short():
+    """Test parsing with less than 2 lines."""
+    patch = "From abc123"
+    
+    with pytest.raises(ValueError, match="less than 2 lines"):
+        parse_patch(patch)
+
+
+def test_is_noreply_email():
+    """Test noreply email detection."""
+    assert is_noreply_email("noreply@github.com") is True
+    assert is_noreply_email("NOREPLY@domain.org") is True
+    assert is_noreply_email("user@example.com") is False
+    assert is_noreply_email("reply@example.com") is False

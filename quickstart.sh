@@ -37,13 +37,13 @@ echo ""
 
 # Run tests
 echo "🧪 Running tests..."
-python3 -m pytest -q
+PYTHONPATH=src python3 -m pytest -q
 
 echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "Try fetching a .patch URL:"
-echo "  python3 -m scraper.cli fetch https://github.com/psf/requests/pull/6000.patch"
+echo "  PYTHONPATH=src python3 -m scraper.cli fetch https://github.com/psf/requests/pull/6000.patch"
 echo ""
 echo "Or see all options:"
 echo "  python3 -m scraper.cli --help"

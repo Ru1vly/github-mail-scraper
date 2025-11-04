@@ -1,80 +1,58 @@
-"""Parse unified diff/patch content using unidiff"""
-from typing import Dict, Any, List
-from unidiff import PatchSet
+"""Parse email and username from .patch content (line 2)"""
+import re
+from typing import Dict, Optional
 
 
-def parse_patch(patch_text: str) -> Dict[str, Any]:
-    """Parse a unified diff/patch into structured data.
+def parse_patch(patch_text: str) -> Dict[str, Optional[str]]:
+    """Parse line 2 of a .patch file to extract email and username.
+    
+    Expected format on line 2:
+        From: username <email@domain.com>
     
     Args:
-        patch_text: Raw .patch content (unified diff format)
+        patch_text: Raw .patch content
     
     Returns:
-        Dictionary with parsed patch data:
+        Dictionary with:
         {
-            "files": [
-                {
-                    "path": str,
-                    "source_file": str,
-                    "target_file": str,
-                    "is_added_file": bool,
-                    "is_removed_file": bool,
-                    "is_binary_file": bool,
-                    "hunks": [
-                        {
-                            "source_start": int,
-                            "source_length": int,
-                            "target_start": int,
-                            "target_length": int,
-                            "section_header": str,
-                            "added": int,
-                            "removed": int,
-                        }
-                    ]
-                }
-            ],
-            "added": int,  # total added lines
-            "removed": int,  # total removed lines
+            "email": str or None,
+            "username": str or None,
         }
     
     Raises:
-        Exception if patch cannot be parsed
+        ValueError if line 2 doesn't match expected format
     """
-    patchset = PatchSet(patch_text)
+    lines = patch_text.split('\n')
     
-    files = []
-    total_added = 0
-    total_removed = 0
+    if len(lines) < 2:
+        raise ValueError("Patch has less than 2 lines")
     
-    for patched_file in patchset:
-        hunks = []
-        for hunk in patched_file:
-            added = hunk.added
-            removed = hunk.removed
-            total_added += added
-            total_removed += removed
-            hunks.append({
-                "source_start": hunk.source_start,
-                "source_length": hunk.source_length,
-                "target_start": hunk.target_start,
-                "target_length": hunk.target_length,
-                "section_header": hunk.section_header,
-                "added": added,
-                "removed": removed,
-            })
-        
-        files.append({
-            "path": patched_file.path,
-            "source_file": patched_file.source_file,
-            "target_file": patched_file.target_file,
-            "is_added_file": patched_file.is_added_file,
-            "is_removed_file": patched_file.is_removed_file,
-            "is_binary_file": patched_file.is_binary_file,
-            "hunks": hunks,
-        })
+    line2 = lines[1].strip()
+    
+    # Match pattern: From: username <email@domain.com>
+    # or: From: username name <email@domain.com>
+    pattern = r'^From:\s+(.+?)\s+<(.+?)>$'
+    match = re.match(pattern, line2)
+    
+    if not match:
+        raise ValueError(f"Line 2 doesn't match expected format: {line2}")
+    
+    username = match.group(1).strip()
+    email = match.group(2).strip()
     
     return {
-        "files": files,
-        "added": total_added,
-        "removed": total_removed,
+        "email": email,
+        "username": username,
     }
+
+
+def is_noreply_email(email: str) -> bool:
+    """Check if an email is a noreply email.
+    
+    Args:
+        email: Email address to check
+    
+    Returns:
+        True if email contains 'noreply', False otherwise
+    """
+    return 'noreply' in email.lower()

@@ -16,42 +16,52 @@ def temp_storage():
 
 def test_save_and_retrieve_patch(temp_storage):
     """Test saving and retrieving a patch."""
-    url = "https://github.com/test/repo/pull/1.patch"
-    raw_patch = "diff --git a/file.py b/file.py\n..."
-    parsed_data = {"files": [], "added": 10, "removed": 5}
+    email = "user@example.com"
+    username = "testuser"
     
     # Save
-    row_id = temp_storage.save_patch(url, raw_patch, parsed_data)
+    row_id = temp_storage.save_patch(email, username)
     assert row_id > 0
     
     # Retrieve
-    retrieved = temp_storage.get_patch_by_url(url)
+    retrieved = temp_storage.get_patch_by_email(email)
     assert retrieved is not None
-    assert retrieved["url"] == url
-    assert retrieved["raw_patch"] == raw_patch
-    assert retrieved["parse_error"] is None
+    assert retrieved["email"] == email
+    assert retrieved["username"] == username
 
 
-def test_save_patch_with_error(temp_storage):
-    """Test saving a patch with parse error."""
-    url = "https://github.com/test/repo/pull/2.patch"
-    raw_patch = "invalid patch"
-    parse_error = "Failed to parse"
+def test_email_exists(temp_storage):
+    """Test checking if email exists."""
+    email = "user@example.com"
+    username = "testuser"
     
-    row_id = temp_storage.save_patch(url, raw_patch, parse_error=parse_error)
-    assert row_id > 0
+    # Should not exist initially
+    assert temp_storage.email_exists(email) is False
     
-    retrieved = temp_storage.get_patch_by_url(url)
-    assert retrieved["parse_error"] == parse_error
-    assert retrieved["parsed_data"] is None
+    # Save
+    temp_storage.save_patch(email, username)
+    
+    # Should exist now
+    assert temp_storage.email_exists(email) is True
+
+
+def test_duplicate_email_raises_error(temp_storage):
+    """Test that saving duplicate email raises error."""
+    email = "duplicate@example.com"
+    
+    # First save
+    temp_storage.save_patch(email, "user1")
+    
+    # Second save with same email should raise error
+    with pytest.raises(Exception):  # sqlite3.IntegrityError
+        temp_storage.save_patch(email, "user2")
 
 
 def test_list_patches(temp_storage):
     """Test listing patches."""
     # Save multiple patches
     for i in range(5):
-        url = f"https://github.com/test/repo/pull/{i}.patch"
-        temp_storage.save_patch(url, f"patch {i}")
+        temp_storage.save_patch(f"user{i}@example.com", f"user{i}")
     
     patches = temp_storage.list_patches(limit=10)
     assert len(patches) == 5
@@ -61,19 +71,12 @@ def test_list_patches(temp_storage):
     assert len(patches) == 2
 
 
-def test_duplicate_url_update(temp_storage):
-    """Test that saving the same URL updates the existing record."""
-    url = "https://github.com/test/repo/pull/1.patch"
+def test_count_patches(temp_storage):
+    """Test counting patches."""
+    assert temp_storage.count_patches() == 0
     
-    # First save
-    temp_storage.save_patch(url, "original patch")
+    # Add some patches
+    for i in range(3):
+        temp_storage.save_patch(f"user{i}@example.com", f"user{i}")
     
-    # Second save with same URL
-    temp_storage.save_patch(url, "updated patch", parsed_data={"updated": True})
-    
-    retrieved = temp_storage.get_patch_by_url(url)
-    assert retrieved["raw_patch"] == "updated patch"
-    
-    # Should still have only one record
-    all_patches = temp_storage.list_patches(limit=100)
-    assert len(all_patches) == 1
+    assert temp_storage.count_patches() == 3

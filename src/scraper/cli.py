@@ -11,7 +11,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from scraper.fetcher import fetch_patch
-from scraper.parser import parse_patch
+from scraper.parser import parse_patch, is_noreply_email
 from scraper.storage import PatchStorage
 
 app = typer.Typer(help="GitHub .patch scraper CLI")
@@ -43,26 +43,33 @@ async def _fetch_and_store(url: str, token: Optional[str], db_path: str):
             raw_patch = await fetch_patch(url, token=token)
             progress.update(task, description=f"Parsing {url}...")
             
-            # Parse
+            # Parse line 2
             try:
                 parsed = parse_patch(raw_patch)
-                parse_error = None
+                email = parsed["email"]
+                username = parsed["username"]
             except Exception as e:
-                console.print(f"[yellow]Warning: Parse error: {e}[/yellow]")
-                parsed = None
-                parse_error = str(e)
+                console.print(f"[red]✗ Parse error: {e}[/red]")
+                raise typer.Exit(code=1)
+            
+            # Rule 2: Skip noreply emails
+            if is_noreply_email(email):
+                console.print(f"[yellow]⊘ Skipped: noreply email ({email})[/yellow]")
+                return
+            
+            # Rule 1: Skip if email already exists
+            if storage.email_exists(email):
+                console.print(f"[yellow]⊘ Skipped: email already in database ({email})[/yellow]")
+                return
             
             # Store
-            progress.update(task, description=f"Storing {url}...")
-            row_id = storage.save_patch(url, raw_patch, parsed, parse_error)
+            progress.update(task, description=f"Storing {email}...")
+            row_id = storage.save_patch(email, username)
             
             progress.update(task, description=f"✓ Saved (id={row_id})")
-            console.print(f"[green]✓ Patch saved to database (id={row_id})[/green]")
-            
-            if parsed:
-                console.print(f"  Files changed: {len(parsed['files'])}")
-                console.print(f"  Lines added: {parsed['added']}")
-                console.print(f"  Lines removed: {parsed['removed']}")
+            console.print(f"[green]✓ Saved to database (id={row_id})[/green]")
+            console.print(f"  Email: {email}")
+            console.print(f"  Username: {username}")
         
         except Exception as e:
             console.print(f"[red]✗ Error: {e}[/red]")
@@ -74,18 +81,20 @@ def list_patches(
     db_path: str = typer.Option("data/patches.db", "--db", help="Path to SQLite database"),
     limit: int = typer.Option(20, "--limit", "-n", help="Number of patches to list"),
 ):
-    """List patches in the database."""
+    """List emails and usernames in the database."""
     storage = PatchStorage(db_path)
     patches = storage.list_patches(limit=limit)
     
     if not patches:
-        console.print("[yellow]No patches found in database.[/yellow]")
+        console.print("[yellow]No records found in database.[/yellow]")
         return
     
-    console.print(f"[bold]Recent patches (limit={limit}):[/bold]\n")
+    total = storage.count_patches()
+    console.print(f"[bold]Recent records (showing {len(patches)} of {total} total):[/bold]\n")
     for patch in patches:
         console.print(f"  ID: {patch['id']}")
-        console.print(f"  URL: {patch['url']}")
+        console.print(f"  Email: {patch['email']}")
+        console.print(f"  Username: {patch['username']}")
         console.print(f"  Created: {patch['created_at']}")
         console.print()
 

@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from scraper.fetcher import fetch_patch
-from scraper.parser import parse_patch
+from scraper.parser import parse_patch, is_noreply_email
 from scraper.storage import PatchStorage
 
 
@@ -28,33 +28,38 @@ async def main():
         raw_patch = await fetch_patch(url)
         print(f"✓ Fetched {len(raw_patch)} bytes")
         
-        # Parse the patch
+        # Parse line 2 for email and username
         parsed = parse_patch(raw_patch)
+        email = parsed["email"]
+        username = parsed["username"]
         print(f"✓ Parsed successfully")
         print()
         
-        # Display statistics
-        print("📊 Statistics:")
-        print(f"  Files changed: {len(parsed['files'])}")
-        print(f"  Lines added:   +{parsed['added']}")
-        print(f"  Lines removed: -{parsed['removed']}")
+        # Display extracted information
+        print("📊 Extracted Information:")
+        print(f"  Email:    {email}")
+        print(f"  Username: {username}")
         print()
         
-        # Display file details
-        print("📁 Files:")
-        for file in parsed['files']:
-            status = ""
-            if file['is_added_file']:
-                status = " [NEW]"
-            elif file['is_removed_file']:
-                status = " [DELETED]"
-            print(f"  • {file['path']}{status}")
-        print()
+        # Check filtering rules
+        storage = PatchStorage("data/patches.db")
+        
+        if is_noreply_email(email):
+            print("⊘ Skipped: noreply email")
+            return
+        
+        if storage.email_exists(email):
+            print("⊘ Skipped: email already in database")
+            return
         
         # Save to database
-        storage = PatchStorage("data/patches.db")
-        row_id = storage.save_patch(url, raw_patch, parsed)
+        row_id = storage.save_patch(email, username)
         print(f"💾 Saved to database (id={row_id})")
+        print()
+        
+        # Show total count
+        total = storage.count_patches()
+        print(f"� Total emails in database: {total}")
         
     except Exception as e:
         print(f"❌ Error: {e}")
